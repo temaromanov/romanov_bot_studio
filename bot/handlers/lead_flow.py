@@ -139,7 +139,15 @@ async def start_lead_flow(message: Message, state: FSMContext) -> None:
     await message.answer("Выберите услугу:", reply_markup=services_kb(SERVICES))
 
 
-# старт заявки из раздела "Примеры работ" с уже выбранной услугой
+# ✅ старт заявки из inline-кнопок на статических страницах ("Как мы работаем" / "Контакты")
+@router.callback_query(F.data == "lead:start")
+async def start_lead_flow_from_inline(call: CallbackQuery, state: FSMContext) -> None:
+    await state.clear()
+    await state.set_state(LeadForm.choosing_service)
+    await call.message.answer("Выберите услугу:", reply_markup=services_kb(SERVICES))
+    await call.answer()
+
+
 @router.callback_query(F.data.startswith("lead:svc:"))
 async def start_lead_flow_with_service(call: CallbackQuery, state: FSMContext) -> None:
     raw = (call.data or "").split(":", 2)[2]
