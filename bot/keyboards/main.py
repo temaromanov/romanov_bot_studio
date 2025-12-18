@@ -6,6 +6,7 @@ from aiogram.types import KeyboardButton, ReplyKeyboardMarkup
 def main_menu_kb() -> ReplyKeyboardMarkup:
     return ReplyKeyboardMarkup(
         keyboard=[
+            [KeyboardButton(text="Оставить заявку")],
             [KeyboardButton(text="Услуги")],
             [KeyboardButton(text="Примеры работ")],
             [KeyboardButton(text="Как мы работаем")],

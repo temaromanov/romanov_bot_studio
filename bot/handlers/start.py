@@ -22,8 +22,8 @@ async def cmd_start(message: Message) -> None:
 async def cmd_help(message: Message) -> None:
     text = (
         "<b>Помощь</b>\n"
-        "Используйте меню, чтобы посмотреть услуги и информацию.\n"
-        "Если нужно связаться — откройте пункт «Контакты»."
+        "Нажмите «Оставить заявку», чтобы оформить запрос.\n"
+        "Остальные пункты меню — справочные."
     )
     await message.answer(text, reply_markup=main_menu_kb())
 
@@ -32,7 +32,7 @@ async def cmd_help(message: Message) -> None:
 async def menu_services(message: Message) -> None:
     await message.answer(
         "Раздел «Услуги» — в разработке.\n"
-        "Скоро тут появится выбор услуги и оформление заявки."
+        "Скоро тут появятся подробности и сценарии."
     )
 
 
@@ -40,7 +40,7 @@ async def menu_services(message: Message) -> None:
 async def menu_portfolio(message: Message) -> None:
     await message.answer(
         "Раздел «Примеры работ» — в разработке.\n"
-        "Скоро добавим ссылки/кейсы."
+        "Скоро добавим кейсы."
     )
 
 
@@ -48,7 +48,7 @@ async def menu_portfolio(message: Message) -> None:
 async def menu_how_we_work(message: Message) -> None:
     await message.answer(
         "Раздел «Как мы работаем» — в разработке.\n"
-        "Скоро добавим этапы, сроки и правила."
+        "Скоро добавим этапы и сроки."
     )
 
 
