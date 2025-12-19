@@ -52,6 +52,7 @@ def prepare_lead_data(
     }
     return payload
 
+
 def format_admin_message(lead: dict[str, Any], files: list[dict[str, str]] | None = None) -> str:
     """Единый формат уведомления админу по SPEC."""
 
