@@ -11,10 +11,12 @@ from bot.services.leads import format_admin_message, map_deadline, prepare_lead_
 
 @pytest.mark.asyncio
 async def test_deadline_mapping():
-    assert map_deadline("deadline:urgent") == "Срочно (1–2 дня)"
-    assert map_deadline("deadline:week") == "В течение недели"
-    assert map_deadline("deadline:not_urgent") == "Не срочно"
-    assert map_deadline("deadline:custom", "к пятнице") == "к пятнице"
+    assert map_deadline("urgent") == "Срочно"
+    assert map_deadline("week") == "В течение недели"
+    assert map_deadline("not_urgent") == "Не срочно"
+    assert map_deadline("custom", "к пятнице") == "к пятнице"
+    # допускаем старый формат с префиксом
+    assert map_deadline("deadline:urgent") == "Срочно"
 
 
 @pytest.mark.asyncio
@@ -27,7 +29,8 @@ async def test_save_lead_and_files_and_format_message(inited_db):
         tg_full_name="Артём Романов",
         service="Нейрофотосессия",
         task="Стиль: бизнес, тёплый свет",
-        deadline_key="deadline:urgent",
+        deadline_key="urgent",
+        deadline_custom_text=None,
         budget="Фикс",
         contact="@romanov",
         extra={"note": "test"},
@@ -59,7 +62,7 @@ async def test_save_lead_and_files_and_format_message(inited_db):
             row = await cur.fetchone()
         assert row is not None
         assert row[0] == "Нейрофотосессия"
-        assert row[1] == "Срочно (1–2 дня)"
+        assert row[1] == "Срочно"
         assert json.loads(row[2])["note"] == "test"
 
         async with db.execute("SELECT file_type, file_id FROM lead_files WHERE lead_id=? ORDER BY id", (lead_id,)) as cur:
@@ -70,6 +73,6 @@ async def test_save_lead_and_files_and_format_message(inited_db):
     assert "🆕 Новая заявка" in text
     assert "От: Артём Романов (@romanov)" in text
     assert "Услуга: Нейрофотосессия" in text
-    assert "Срок: Срочно (1–2 дня)" in text
+    assert "Срок: Срочно" in text
     assert "Файлы:" in text
     assert "- photo: AAA111" in text
