@@ -11,7 +11,7 @@ class LeadForm(StatesGroup):
     deadline = State()
     deadline_custom = State()
 
-    # контакт (улучшенный UX)
+    # контакт (UX)
     contact_choice = State()
     contact_phone = State()
     contact_other = State()
@@ -26,3 +26,9 @@ class LeadForm(StatesGroup):
     neuro_step1 = State()
     neuro_step2 = State()
     neuro_wishes = State()
+
+    # сценарии услуг (шаг 5.2)
+    content_task = State()
+    video_task = State()
+    model3d_intro = State()
+    model3d_wait_file = State()
