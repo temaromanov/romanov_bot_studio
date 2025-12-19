@@ -80,6 +80,14 @@ def test_format_admin_message_with_files_block():
     assert "Услуга: Разработка" in text
     assert "Задача: Нужен лендинг" in text
     assert "Контакт: @tester" in text
+@pytest.mark.asyncio
+async def test_deadline_mapping():
+    assert map_deadline("urgent") == "Срочно"
+    assert map_deadline("week") == "В течение недели"
+    assert map_deadline("not_urgent") == "Не срочно"
+    assert map_deadline("custom", "к пятнице") == "к пятнице"
+    # допускаем старый формат с префиксом
+    assert map_deadline("deadline:urgent") == "Срочно"
 
 
 @pytest.mark.asyncio
@@ -140,5 +148,9 @@ async def test_save_lead_and_files_linked(inited_db):
         ]
 
     text = format_admin_message(lead, files)
+    assert "🆕 Новая заявка" in text
+    assert "От: Артём Романов (@romanov)" in text
+    assert "Услуга: Нейрофотосессия" in text
+    assert "Срок: Срочно" in text
     assert "Файлы:" in text
     assert "- photo: AAA111" in text
