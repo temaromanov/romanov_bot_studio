@@ -19,7 +19,7 @@ from bot.keyboards.inline import (
 from bot.keyboards.main import main_menu_kb
 from bot.keyboards.model3d import model3d_intro_kb
 from bot.keyboards.neuro import neuro_step1_kb, neuro_step2_kb
-from bot.services.leads import map_deadline, prepare_lead_data
+from bot.services.leads import format_admin_message, map_deadline, prepare_lead_data
 from bot.states.lead_form import LeadForm
 from bot.texts.neuro import (
     NEURO_EXAMPLE_PHOTO_FILE_IDS,
@@ -73,18 +73,6 @@ def _file_kind_from_message(message: Message) -> tuple[str, str] | None:
     if message.document:
         return ("doc", message.document.file_id)
     return None
-
-
-def _files_admin_lines(files: list[dict[str, str]]) -> str:
-    # SPEC: перечисление файлов (тип + file_id) если есть
-    if not files:
-        return ""
-    lines = ["", "Файлы:"]
-    for f in files:
-        ftype = (f.get("file_type") or "—").strip()
-        fid = (f.get("file_id") or "—").strip()
-        lines.append(f"- {ftype}: {fid}")
-    return "\n".join(lines)
 
 
 # --------------------
@@ -802,21 +790,7 @@ async def lead_send(call: CallbackQuery, state: FSMContext) -> None:
     if files:
         await save_files(DB_PATH, lead_id=lead_id, files=files)
 
-    admin_text = (
-        "🆕 Новая заявка\n"
-        f"От: {(lead.get('tg_full_name') or 'Без имени')}"
-        + (f" (@{lead.get('tg_username')})" if lead.get("tg_username") else "")
-        + "\n"
-        f"Услуга: {lead.get('service')}\n"
-        f"Задача: {lead.get('task')}\n"
-        f"Срок: {lead.get('deadline')}\n"
-        f"Контакт: {lead.get('contact')}"
-    )
-    if lead.get("budget"):
-        admin_text += f"\nБюджет: {lead.get('budget')}"
-    admin_text += _files_admin_lines(files)
-
-    await call.bot.send_message(ADMIN_TG_ID, admin_text)
+    await call.bot.send_message(ADMIN_TG_ID, format_admin_message(lead, files))
 
     await state.clear()
     await send_lead_success(call.message)
