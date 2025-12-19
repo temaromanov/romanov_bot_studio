@@ -8,6 +8,7 @@ class LeadForm(StatesGroup):
 
     # общий поток
     task = State()
+
     deadline = State()
     deadline_custom = State()
 
@@ -27,8 +28,11 @@ class LeadForm(StatesGroup):
     neuro_step2 = State()
     neuro_wishes = State()
 
-    # сценарии услуг (шаг 5.2)
+    # сценарии услуг
     content_task = State()
     video_task = State()
+
     model3d_intro = State()
     model3d_wait_file = State()
+    # NEW: если пользователь прислал файл без caption — просим описание отдельным сообщением
+    model3d_desc = State()

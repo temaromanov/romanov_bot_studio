@@ -5,7 +5,7 @@ from aiogram.fsm.context import FSMContext
 from aiogram.types import CallbackQuery, InputMediaPhoto, Message
 
 from bot.config import ADMIN_TG_ID, DB_PATH
-from bot.constants.services import SERVICES
+from bot.constants.services import SERVICES, get_service_title
 from bot.db.repository import save_files, save_lead
 from bot.keyboards.contact import contact_choice_kb, contact_input_kb
 from bot.keyboards.form import back_cancel_kb
@@ -19,7 +19,7 @@ from bot.keyboards.inline import (
 from bot.keyboards.main import main_menu_kb
 from bot.keyboards.model3d import model3d_intro_kb
 from bot.keyboards.neuro import neuro_step1_kb, neuro_step2_kb
-from bot.services.leads import prepare_lead_data
+from bot.services.leads import map_deadline, prepare_lead_data
 from bot.states.lead_form import LeadForm
 from bot.texts.neuro import (
     NEURO_EXAMPLE_PHOTO_FILE_IDS,
@@ -35,13 +35,10 @@ router = Router()
 
 MAX_FILES = 10
 
-_DEADLINE_LABELS: dict[str, str] = {
-    "urgent": "Срочно",
-    "week": "В течение недели",
-    "not_urgent": "Не срочно",
-}
 
-
+# --------------------
+# Helpers: service detection
+# --------------------
 def _is_restoration_service(service: str) -> bool:
     return "реставрац" in (service or "").lower()
 
@@ -65,6 +62,9 @@ def _is_model3d_service(service: str) -> bool:
     return "3d" in s and "модель" in s
 
 
+# --------------------
+# Helpers: files parsing & admin formatting
+# --------------------
 def _file_kind_from_message(message: Message) -> tuple[str, str] | None:
     if message.photo:
         return ("photo", message.photo[-1].file_id)
@@ -75,14 +75,21 @@ def _file_kind_from_message(message: Message) -> tuple[str, str] | None:
     return None
 
 
-def _file_kinds_human(files: list[dict[str, str]]) -> str:
-    kinds = {f.get("file_type") for f in files}
-    order = ["photo", "video", "doc", "document_image"]
-    labels = {"photo": "фото", "video": "видео", "doc": "док", "document_image": "док"}
-    out = [labels[k] for k in order if k in kinds]
-    return ", ".join(out) if out else "—"
+def _files_admin_lines(files: list[dict[str, str]]) -> str:
+    # SPEC: перечисление файлов (тип + file_id) если есть
+    if not files:
+        return ""
+    lines = ["", "Файлы:"]
+    for f in files:
+        ftype = (f.get("file_type") or "—").strip()
+        fid = (f.get("file_id") or "—").strip()
+        lines.append(f"- {ftype}: {fid}")
+    return "\n".join(lines)
 
 
+# --------------------
+# Helpers: flow & UI steps
+# --------------------
 async def _cancel_flow(target: Message | CallbackQuery, state: FSMContext) -> None:
     await state.clear()
     text = "Ок, отменил. Возвращаю в меню 👇"
@@ -93,12 +100,19 @@ async def _cancel_flow(target: Message | CallbackQuery, state: FSMContext) -> No
         await target.answer(text, reply_markup=main_menu_kb())
 
 
+def _deadline_human_from_state(data: dict) -> str:
+    key = (data.get("deadline_key") or "").strip()
+    custom = data.get("deadline_custom_text")
+    return map_deadline(key, custom)
+
+
 def _summary_text(data: dict) -> str:
     service = data.get("service") or "—"
     task = data.get("task") or "—"
-    deadline = data.get("deadline") or "—"
     contact = data.get("contact") or "—"
     files: list[dict[str, str]] = data.get("files") or []
+
+    deadline_human = _deadline_human_from_state(data)
 
     lines = ["<b>Проверь заявку</b>", ""]
     lines.append(f"<b>Услуга:</b> {service}")
@@ -110,12 +124,10 @@ def _summary_text(data: dict) -> str:
     else:
         lines.append(f"<b>Задача:</b> {task}")
 
-    lines.append(f"<b>Срок:</b> {deadline}")
+    lines.append(f"<b>Срок:</b> {deadline_human}")
     lines.append(f"<b>Контакт:</b> {contact}")
 
-    if _is_restoration_service(service):
-        lines.append(f"<b>Файлы:</b> {len(files)} (типы: {_file_kinds_human(files)})")
-    if _is_model3d_service(service):
+    if files:
         lines.append(f"<b>Файлы:</b> {len(files)}")
 
     lines.append("")
@@ -198,81 +210,99 @@ async def _ask_model3d_wait_file(message: Message, state: FSMContext) -> None:
     )
 
 
+async def _ask_model3d_desc(message: Message, state: FSMContext) -> None:
+    await state.set_state(LeadForm.model3d_desc)
+    await message.answer(
+        "Опишите, что на изображении и что нужно сделать (одним сообщением):",
+        reply_markup=back_cancel_kb(),
+    )
+
+
+async def _enter_service_flow(message: Message, state: FSMContext, service_title: str) -> None:
+    """
+    ЕДИНЫЙ entry-point старта конкретной услуги:
+    - очищает FSM
+    - пишет service в data
+    - переводит на первый шаг сценария этой услуги
+    """
+    await state.clear()
+    await state.update_data(
+        service=service_title,
+        rest_type=None,
+        files=[],
+        contact=None,
+        deadline_key=None,
+        deadline_custom_text=None,
+        task=None,
+    )
+
+    if _is_neuro_service(service_title):
+        await _ask_neuro_step1(message, state)
+        return
+    if _is_restoration_service(service_title):
+        await _ask_rest_type(message, state)
+        return
+    if _is_model3d_service(service_title):
+        await _ask_model3d_intro(message, state)
+        return
+    if _is_content_service(service_title):
+        await _ask_content_task(message, state)
+        return
+    if _is_video_service(service_title):
+        await _ask_video_task(message, state)
+        return
+
+    await state.set_state(LeadForm.task)
+    await message.answer("Опишите задачу одним сообщением (что нужно сделать):", reply_markup=back_cancel_kb())
+
+
+async def start_lead_with_service_id(message: Message, state: FSMContext, service_id: str) -> None:
+    """
+    Публичный entry-point для внешних handler’ов (portfolio/services/pages):
+    стартует заявку и устанавливает выбранную услугу по service_id.
+    """
+    title = get_service_title(service_id)
+    if not title:
+        await message.answer("Не удалось определить услугу. Откройте «Оставить заявку» и выберите услугу заново.")
+        return
+    await _enter_service_flow(message, state, title)
+
+
 def _prev_task_route(service: str) -> str:
     if _is_neuro_service(service):
         return "neuro_wishes"
-    if _is_restoration_service(service):
-        return "task"
     if _is_model3d_service(service):
         return "model3d_wait_file"
     if _is_content_service(service):
         return "content_task"
     if _is_video_service(service):
         return "video_task"
+    # restoration + default
     return "task"
 
 
+# --------------------
+# Entry points: start lead (menu / inline)
+# --------------------
 @router.message(F.text == "✅ Оставить заявку")
-async def start_lead_flow(message: Message, state: FSMContext) -> None:
+async def start_lead_from_menu(message: Message, state: FSMContext) -> None:
+    # старт без предвыбранной услуги: показываем каталог
     await state.clear()
     await state.set_state(LeadForm.choosing_service)
     await message.answer("Выберите услугу:", reply_markup=services_kb(SERVICES))
 
 
 @router.callback_query(F.data == "lead:start")
-async def start_lead_flow_from_inline(call: CallbackQuery, state: FSMContext) -> None:
+async def start_lead_from_inline(call: CallbackQuery, state: FSMContext) -> None:
     await state.clear()
     await state.set_state(LeadForm.choosing_service)
     await call.message.answer("Выберите услугу:", reply_markup=services_kb(SERVICES))
     await call.answer()
 
 
-@router.callback_query(F.data == "lead:back_to_services")
-async def lead_back_to_services(call: CallbackQuery, state: FSMContext) -> None:
-    await state.set_state(LeadForm.choosing_service)
-    await call.message.answer("Выберите услугу:", reply_markup=services_kb(SERVICES))
-    await call.answer()
-
-
-@router.callback_query(F.data.startswith("lead:svc:"))
-async def start_lead_flow_with_service(call: CallbackQuery, state: FSMContext) -> None:
-    raw = (call.data or "").split(":", 2)[2]
-    try:
-        idx = int(raw)
-    except ValueError:
-        await call.answer("Некорректный выбор")
-        return
-
-    if not (1 <= idx <= len(SERVICES)):
-        await call.answer("Некорректный выбор")
-        return
-
-    service = SERVICES[idx - 1]
-    await state.clear()
-    await state.update_data(service=service, rest_type=None, files=[], contact=None)
-
-    await call.answer()
-
-    if _is_neuro_service(service):
-        await _ask_neuro_step1(call.message, state)
-        return
-    if _is_restoration_service(service):
-        await _ask_rest_type(call.message, state)
-        return
-    if _is_model3d_service(service):
-        await _ask_model3d_intro(call.message, state)
-        return
-    if _is_content_service(service):
-        await _ask_content_task(call.message, state)
-        return
-    if _is_video_service(service):
-        await _ask_video_task(call.message, state)
-        return
-
-    await state.set_state(LeadForm.task)
-    await call.message.answer("Опишите задачу одним сообщением (что нужно сделать):", reply_markup=back_cancel_kb())
-
-
+# --------------------
+# Common cancel/back to menu
+# --------------------
 @router.message(F.text == "❌ Отменить")
 async def cancel_from_reply(message: Message, state: FSMContext) -> None:
     current = await state.get_state()
@@ -283,10 +313,20 @@ async def cancel_from_reply(message: Message, state: FSMContext) -> None:
 
 
 @router.callback_query(F.data == "lead:cancel")
-async def lead_cancel(call: CallbackQuery, state: FSMContext) -> None:
+async def cancel_from_inline(call: CallbackQuery, state: FSMContext) -> None:
     await _cancel_flow(call, state)
 
 
+@router.callback_query(F.data == "lead:back_to_menu")
+async def back_to_menu(call: CallbackQuery, state: FSMContext) -> None:
+    await state.clear()
+    await call.message.answer("Главное меню 👇", reply_markup=main_menu_kb())
+    await call.answer()
+
+
+# --------------------
+# Choose service (catalog)
+# --------------------
 @router.callback_query(LeadForm.choosing_service, F.data.startswith("svc:"))
 async def choose_service(call: CallbackQuery, state: FSMContext) -> None:
     raw = (call.data or "").split(":", 1)[1]
@@ -300,32 +340,13 @@ async def choose_service(call: CallbackQuery, state: FSMContext) -> None:
         await call.answer("Некорректный выбор")
         return
 
-    service = SERVICES[idx - 1]
-    await state.update_data(service=service, rest_type=None, files=[], contact=None)
-
     await call.answer()
-
-    if _is_neuro_service(service):
-        await _ask_neuro_step1(call.message, state)
-        return
-    if _is_restoration_service(service):
-        await _ask_rest_type(call.message, state)
-        return
-    if _is_model3d_service(service):
-        await _ask_model3d_intro(call.message, state)
-        return
-    if _is_content_service(service):
-        await _ask_content_task(call.message, state)
-        return
-    if _is_video_service(service):
-        await _ask_video_task(call.message, state)
-        return
-
-    await state.set_state(LeadForm.task)
-    await call.message.answer("Опишите задачу одним сообщением (что нужно сделать):", reply_markup=back_cancel_kb())
+    await _enter_service_flow(call.message, state, SERVICES[idx - 1])
 
 
-# ---------- Нейрофото ----------
+# --------------------
+# Neuro flow
+# --------------------
 @router.callback_query(LeadForm.neuro_step1, F.data == "neuro:step1_done")
 async def neuro_step1_done(call: CallbackQuery, state: FSMContext) -> None:
     await call.answer()
@@ -363,7 +384,9 @@ async def neuro_wishes_input(message: Message, state: FSMContext) -> None:
     await _ask_deadline(message, state)
 
 
-# ---------- Контент ----------
+# --------------------
+# Content flow
+# --------------------
 @router.message(LeadForm.content_task)
 async def content_task_input(message: Message, state: FSMContext) -> None:
     text = (message.text or "").strip()
@@ -374,7 +397,9 @@ async def content_task_input(message: Message, state: FSMContext) -> None:
     await _ask_deadline(message, state)
 
 
-# ---------- Видео ----------
+# --------------------
+# Video greeting flow
+# --------------------
 @router.message(LeadForm.video_task)
 async def video_task_input(message: Message, state: FSMContext) -> None:
     text = (message.text or "").strip()
@@ -385,7 +410,9 @@ async def video_task_input(message: Message, state: FSMContext) -> None:
     await _ask_deadline(message, state)
 
 
-# ---------- 3D ----------
+# --------------------
+# 3D flow
+# --------------------
 @router.callback_query(LeadForm.model3d_intro, F.data == "model3d:next")
 async def model3d_next(call: CallbackQuery, state: FSMContext) -> None:
     await call.answer()
@@ -406,12 +433,31 @@ async def model3d_wait_file(message: Message, state: FSMContext) -> None:
         await message.answer("Нужно отправить изображение (фото или документ с картинкой).", reply_markup=back_cancel_kb())
         return
 
+    await state.update_data(files=files)
+
     caption = (message.caption or "").strip()
-    await state.update_data(files=files, task=caption if caption else "—")
+    if not caption:
+        # SPEC: если файл без caption — запросить описание отдельным сообщением
+        await _ask_model3d_desc(message, state)
+        return
+
+    await state.update_data(task=caption)
     await _ask_deadline(message, state)
 
 
-# ---------- Реставрация ----------
+@router.message(LeadForm.model3d_desc)
+async def model3d_desc_input(message: Message, state: FSMContext) -> None:
+    text = (message.text or "").strip()
+    if not is_non_empty_text(text):
+        await message.answer("Опишите текстом (не пусто).", reply_markup=back_cancel_kb())
+        return
+    await state.update_data(task=text)
+    await _ask_deadline(message, state)
+
+
+# --------------------
+# Restoration flow (type -> task -> files)
+# --------------------
 @router.callback_query(LeadForm.rest_type, F.data.in_({"rest:photo", "rest:video"}))
 async def restoration_choose_type(call: CallbackQuery, state: FSMContext) -> None:
     rest_type = "Фото" if call.data == "rest:photo" else "Видео"
@@ -476,6 +522,7 @@ async def files_done(call: CallbackQuery, state: FSMContext) -> None:
     data = await state.get_data()
     files: list[dict[str, str]] = data.get("files") or []
 
+    # ВАЖНО: шаг можно пропустить
     if not files:
         await call.message.answer("⚠️ Файлы не прикреплены. Продолжаем без файлов.")
         await call.answer()
@@ -495,12 +542,16 @@ async def files_unexpected_text(message: Message, state: FSMContext) -> None:
     )
 
 
-# ---------- deadline ----------
-@router.callback_query(LeadForm.deadline, F.data.startswith("dl:"))
+# --------------------
+# Deadline (SPEC): callback deadline:urgent/week/not_urgent/custom
+# FSM stores key + custom_text. DB stores human-readable via map_deadline.
+# --------------------
+@router.callback_query(LeadForm.deadline, F.data.startswith("deadline:"))
 async def choose_deadline(call: CallbackQuery, state: FSMContext) -> None:
     key = (call.data or "").split(":", 1)[1].strip()
 
     if key == "custom":
+        await state.update_data(deadline_key="custom", deadline_custom_text=None)
         await state.set_state(LeadForm.deadline_custom)
         await call.message.answer(
             "Напишите ваш вариант срока (например: «к пятнице», «до 10 января»):",
@@ -509,11 +560,11 @@ async def choose_deadline(call: CallbackQuery, state: FSMContext) -> None:
         await call.answer()
         return
 
-    if key not in _DEADLINE_LABELS:
+    if key not in {"urgent", "week", "not_urgent"}:
         await call.answer("Некорректный выбор")
         return
 
-    await state.update_data(deadline=_DEADLINE_LABELS[key])
+    await state.update_data(deadline_key=key, deadline_custom_text=None)
     await call.answer()
     await _ask_contact(call.message, state)
 
@@ -524,11 +575,13 @@ async def input_deadline_custom(message: Message, state: FSMContext) -> None:
     if not is_non_empty_text(text):
         await message.answer("Напишите срок текстом (не пусто).", reply_markup=back_cancel_kb())
         return
-    await state.update_data(deadline=text)
+    await state.update_data(deadline_key="custom", deadline_custom_text=text)
     await _ask_contact(message, state)
 
 
-# ---------- contact (UX) ----------
+# --------------------
+# Contact (username/phone/other/skip) + Back
+# --------------------
 @router.message(LeadForm.contact_choice, F.text == "✅ Использовать мой @username")
 async def contact_use_username(message: Message, state: FSMContext) -> None:
     username = (message.from_user.username or "").strip()
@@ -580,20 +633,24 @@ async def contact_other_input(message: Message, state: FSMContext) -> None:
     await _show_confirm(message, state)
 
 
-# ---------- Back (reply) ----------
+# --------------------
+# Back (reply keyboard)
+# --------------------
 @router.message(F.text == "⬅️ Назад")
 async def back_from_reply(message: Message, state: FSMContext) -> None:
     current = await state.get_state()
-    data = await state.get_data()
-    service = data.get("service") or ""
 
     if current in {
         LeadForm.task.state,
         LeadForm.content_task.state,
         LeadForm.video_task.state,
         LeadForm.model3d_wait_file.state,
+        LeadForm.model3d_desc.state,
         LeadForm.neuro_wishes.state,
     }:
+        if current == LeadForm.model3d_desc.state:
+            await _ask_model3d_wait_file(message, state)
+            return
         if current == LeadForm.model3d_wait_file.state:
             await _ask_model3d_intro(message, state)
             return
@@ -616,7 +673,9 @@ async def back_from_reply(message: Message, state: FSMContext) -> None:
     await message.answer("Вы в меню.", reply_markup=main_menu_kb())
 
 
-# ---------- Back (inline) ----------
+# --------------------
+# Back (inline buttons)
+# --------------------
 @router.callback_query(F.data == "lead:back")
 async def back_from_inline(call: CallbackQuery, state: FSMContext) -> None:
     current = await state.get_state()
@@ -650,6 +709,7 @@ async def back_from_inline(call: CallbackQuery, state: FSMContext) -> None:
         if prev == "model3d_wait_file":
             await _ask_model3d_wait_file(call.message, state)
             return
+
         await state.set_state(LeadForm.task)
         await call.message.answer("Опишите задачу одним сообщением (что нужно сделать):", reply_markup=back_cancel_kb())
         return
@@ -662,9 +722,12 @@ async def back_from_inline(call: CallbackQuery, state: FSMContext) -> None:
     await call.answer()
 
 
-# ---------- confirm/send ----------
+# --------------------
+# Confirm / Send
+# --------------------
 @router.callback_query(LeadForm.confirm, F.data == "lead:edit")
 async def lead_edit(call: CallbackQuery, state: FSMContext) -> None:
+    # По текущей логике: "изменить" перезапускает выбор услуги
     await state.clear()
     await state.set_state(LeadForm.choosing_service)
     await call.message.answer("Ок, давайте заново. Выберите услугу:", reply_markup=services_kb(SERVICES))
@@ -677,25 +740,36 @@ async def lead_send(call: CallbackQuery, state: FSMContext) -> None:
 
     service = (data.get("service") or "").strip()
     task = (data.get("task") or "").strip()
-    deadline = (data.get("deadline") or "").strip()
+    deadline_key = (data.get("deadline_key") or "").strip()
+    deadline_custom_text = data.get("deadline_custom_text")
     contact = (data.get("contact") or "").strip() or "—"
     files: list[dict[str, str]] = data.get("files") or []
 
+    # 3D: файл обязателен
     if _is_model3d_service(service) and not files:
         await call.answer("Для 3D нужен файл (изображение).", show_alert=True)
         await _ask_model3d_wait_file(call.message, state)
         return
 
-    if not (service and task and deadline):
+    # 3D: описание обязательно (если пришли сюда без него — вернём)
+    if _is_model3d_service(service) and not task:
+        await call.answer("Нужно описание.", show_alert=True)
+        await _ask_model3d_desc(call.message, state)
+        return
+
+    if not (service and task and deadline_key):
         await call.answer("Данные заявки неполные. Начните заново.", show_alert=True)
         await _cancel_flow(call, state)
         return
 
     user = call.from_user
 
+    # budget: оставляем, для нейрофото фикс 2500 ₽
+    budget: str | None = "2500 ₽" if _is_neuro_service(service) else None
+
     extra = {}
     if _is_restoration_service(service):
-        extra = {"rest_type": data.get("rest_type"), "files_count": len(files), "files_types": _file_kinds_human(files)}
+        extra = {"rest_type": data.get("rest_type")}
     if _is_neuro_service(service):
         extra = {"wishes": task}
 
@@ -705,13 +779,12 @@ async def lead_send(call: CallbackQuery, state: FSMContext) -> None:
         tg_full_name=(user.full_name or "").strip() or "Пользователь",
         service=service,
         task=task,
-        deadline_key="deadline:custom",
-        deadline_custom_text=deadline,
-        budget=None,
+        deadline_key=deadline_key,
+        deadline_custom_text=deadline_custom_text,
+        budget=budget,
         contact=contact,
         extra=extra,
     )
-    lead["deadline"] = deadline
 
     lead_id = await save_lead(
         DB_PATH,
@@ -720,13 +793,13 @@ async def lead_send(call: CallbackQuery, state: FSMContext) -> None:
         tg_full_name=lead["tg_full_name"],
         service=lead["service"],
         task=lead["task"],
-        deadline=lead["deadline"],
+        deadline=lead["deadline"],  # человекочитаемое по map_deadline
         budget=lead["budget"],
         contact=lead["contact"],
         extra_json=lead["extra_json"],
     )
 
-    if (_is_restoration_service(service) or _is_model3d_service(service)) and files:
+    if files:
         await save_files(DB_PATH, lead_id=lead_id, files=files)
 
     admin_text = (
@@ -735,20 +808,13 @@ async def lead_send(call: CallbackQuery, state: FSMContext) -> None:
         + (f" (@{lead.get('tg_username')})" if lead.get("tg_username") else "")
         + "\n"
         f"Услуга: {lead.get('service')}\n"
+        f"Задача: {lead.get('task')}\n"
+        f"Срок: {lead.get('deadline')}\n"
+        f"Контакт: {lead.get('contact')}"
     )
-    if _is_neuro_service(service):
-        admin_text += f"Пожелания: {lead.get('task')}\n"
-    elif _is_model3d_service(service):
-        admin_text += f"Описание: {lead.get('task')}\n"
-    else:
-        admin_text += f"Задача: {lead.get('task')}\n"
-
-    admin_text += f"Срок: {lead.get('deadline')}\nКонтакт: {lead.get('contact')}"
-
-    if _is_restoration_service(service):
-        admin_text += f"\nФайлы: {len(files)} (типы: {_file_kinds_human(files)})"
-    if _is_model3d_service(service):
-        admin_text += f"\nФайлы: {len(files)}"
+    if lead.get("budget"):
+        admin_text += f"\nБюджет: {lead.get('budget')}"
+    admin_text += _files_admin_lines(files)
 
     await call.bot.send_message(ADMIN_TG_ID, admin_text)
 

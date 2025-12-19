@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+# Экран 1
 NEURO_STEP1_TEXT = (
     "📸 Нейрофотосессия — что нужно от вас\n\n"
     "30–50 фото в хорошем качестве\n\n"
@@ -12,6 +13,7 @@ NEURO_STEP1_TEXT = (
     "Нажми «Дальше», когда посмотришь примеры."
 )
 
+# Экран 2
 NEURO_STEP2_TEXT = (
     "🧠 Как мы делаем нейрофотосессию\n\n"
     "Вы присылаете ваши фото + 4–5 референсов (какой стиль хотите)\n\n"
@@ -25,17 +27,16 @@ NEURO_STEP2_TEXT = (
     "💰 Стоимость: 2500 ₽"
 )
 
+# Промпт на ввод пожеланий
 NEURO_WISHES_PROMPT = (
-    "Опишите пожелания: стиль, настроение, где будете использовать, "
-    "любые ограничения/референсы (ссылками можно)"
+    "Опишите пожелания: стиль, настроение, где будете использовать, любые ограничения/референсы (ссылками можно)."
 )
 
-# ВАЖНО: сюда вставь реальные Telegram file_id (5 штук) примеров подходящих фото.
-# Например: ["AgACAgIAAxkBAA...", ...]
+# ✅ Примеры подходящих фото (Telegram file_id) — 5 шт
 NEURO_EXAMPLE_PHOTO_FILE_IDS: list[str] = [
-    "AgACAgIAAxkBAAICKmlEE-RYrmBALS59KO3r1fYI5wZ6AAK_D2sbjoQgSglOe6yk7qmXAQADAgADeQADNgQ",
-    "AgACAgIAAxkBAAICMWlEFJ_DAY1AJSnz9nxWGVW8DB3fAALFD2sbjoQgSvy0N7ulBadZAQADAgADeQADNgQ",
-    "AgACAgIAAxkBAAICM2lEFObZXffAp7rQyr9mLuoP3p79AALGD2sbjoQgSiSFheWRzdXgAQADAgADeQADNgQ",
-    "AgACAgIAAxkBAAICNWlEFXgwDeiuEuSQtAeyNNJECQE6AALND2sbjoQgSivGyqw2ObTKAQADAgADeQADNgQ",
-    "AgACAgIAAxkBAAICN2lEFa0BgdyU5NWbzwufG6Dz5E4oAALPD2sbjoQgSo3tJXQuQ1RRAQADAgADeQADNgQ",
+    "AgACAgIAAxkBAAIBHmlD8RijmSgacFsTLtBKHnReFpeAAALCDWsbjoQgSkh3styFs-ebAQADAgADeQADNgQ",
+    "AgACAgIAAxkBAAIBRGlD81RY8QABqELAqGDKgb7f8KW9RwACzw1rG46EIEp9swABDoS21RgBAAMCAAN5AAM2BA",
+    "AgACAgIAAxkBAAIBRmlD83rUBI9C9u1PYO5_a1g4K-RgAALSDWsbjoQgSm6emFLU7-pkAQADAgADeQADNgQ",
+    "AgACAgIAAxkBAAIBSGlD86YXbBxDPwABdkqW_2GBO8B_tQAC0w1rG46EIEoQda9g21u4tgEAAwIAA3kAAzYE",
+    "AgACAgIAAxkBAAIBSmlD8-ucWbjvgAW117PitcuL8kpzAALVDWsbjoQgSqpkkC8kwrqEAQADAgADeQADNgQ",
 ]
