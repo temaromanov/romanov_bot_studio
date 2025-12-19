@@ -7,6 +7,7 @@ from aiogram.enums import ParseMode
 from bot.config import BOT_TOKEN, DB_PATH
 from bot.db.repository import init_db
 from bot.handlers import lead_flow, pages, portfolio, services, start
+from bot.handlers.debug_file_id import router as debug_file_id_router
 
 
 async def run_bot() -> None:
@@ -23,5 +24,6 @@ async def run_bot() -> None:
     dp.include_router(services.router)
     dp.include_router(portfolio.router)
     dp.include_router(lead_flow.router)
+    dp.include_router(debug_file_id_router)
 
     await dp.start_polling(bot)
