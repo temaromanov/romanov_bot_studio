@@ -28,6 +28,7 @@ from bot.texts.neuro import (
     NEURO_WISHES_PROMPT,
 )
 from bot.texts.service_flows import CONTENT_TASK_TEXT, MODEL3D_INTRO_TEXT, VIDEO_TASK_TEXT
+from bot.utils.replies import send_lead_success
 from bot.utils.validators import is_non_empty_text, validate_contact
 
 router = Router()
@@ -395,16 +396,12 @@ async def model3d_next(call: CallbackQuery, state: FSMContext) -> None:
 async def model3d_wait_file(message: Message, state: FSMContext) -> None:
     files: list[dict[str, str]] = []
 
-    # photo
     if message.photo:
         fid = message.photo[-1].file_id
         files.append({"file_type": "photo", "file_id": fid})
-
-    # document with image (мы не определяем mime строго, но принимаем как "document_image")
     elif message.document:
         fid = message.document.file_id
         files.append({"file_type": "document_image", "file_id": fid})
-
     else:
         await message.answer("Нужно отправить изображение (фото или документ с картинкой).", reply_markup=back_cancel_kb())
         return
@@ -590,7 +587,6 @@ async def back_from_reply(message: Message, state: FSMContext) -> None:
     data = await state.get_data()
     service = data.get("service") or ""
 
-    # шаги task/описания -> назад к выбору услуги
     if current in {
         LeadForm.task.state,
         LeadForm.content_task.state,
@@ -598,7 +594,6 @@ async def back_from_reply(message: Message, state: FSMContext) -> None:
         LeadForm.model3d_wait_file.state,
         LeadForm.neuro_wishes.state,
     }:
-        # для 3D: вернёмся на intro, чтобы снова нажали "Дальше"
         if current == LeadForm.model3d_wait_file.state:
             await _ask_model3d_intro(message, state)
             return
@@ -610,12 +605,10 @@ async def back_from_reply(message: Message, state: FSMContext) -> None:
         await message.answer("Выберите услугу:", reply_markup=services_kb(SERVICES))
         return
 
-    # deadline_custom -> deadline
     if current == LeadForm.deadline_custom.state:
         await _ask_deadline(message, state)
         return
 
-    # contact* -> deadline
     if current in {LeadForm.contact_choice.state, LeadForm.contact_phone.state, LeadForm.contact_other.state}:
         await _ask_deadline(message, state)
         return
@@ -688,7 +681,6 @@ async def lead_send(call: CallbackQuery, state: FSMContext) -> None:
     contact = (data.get("contact") or "").strip() or "—"
     files: list[dict[str, str]] = data.get("files") or []
 
-    # для 3D файл обязателен
     if _is_model3d_service(service) and not files:
         await call.answer("Для 3D нужен файл (изображение).", show_alert=True)
         await _ask_model3d_wait_file(call.message, state)
@@ -734,7 +726,6 @@ async def lead_send(call: CallbackQuery, state: FSMContext) -> None:
         extra_json=lead["extra_json"],
     )
 
-    # сохраняем файлы (реставрация и 3D)
     if (_is_restoration_service(service) or _is_model3d_service(service)) and files:
         await save_files(DB_PATH, lead_id=lead_id, files=files)
 
@@ -762,8 +753,5 @@ async def lead_send(call: CallbackQuery, state: FSMContext) -> None:
     await call.bot.send_message(ADMIN_TG_ID, admin_text)
 
     await state.clear()
-    await call.message.answer(
-        f"✅ Заявка отправлена! Номер: <b>{lead_id}</b>\nМы свяжемся с вами в ближайшее время.",
-        reply_markup=main_menu_kb(),
-    )
+    await send_lead_success(call.message)
     await call.answer()
