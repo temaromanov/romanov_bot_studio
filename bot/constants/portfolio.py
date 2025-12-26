@@ -12,10 +12,20 @@ PORTFOLIO_MEDIA_FILE_IDS: dict[str, list[str]] = {
         "AgACAgIAAxkBAAIBSGlD86YXbBxDPwABdkqW_2GBO8B_tQAC0w1rG46EIEoQda9g21u4tgEAAwIAA3kAAzYE",
         "AgACAgIAAxkBAAIBSmlD8-ucWbjvgAW117PitcuL8kpzAALVDWsbjoQgSqpkkC8kwrqEAQADAgADeQADNgQ",
     ],
-    "restoration": [],
+    "restoration": [
+        "AgACAgIAAxkBAAIF32lNf3vZB0ynjys58Bw3op2m_5otAAKBDmsbu1BxSjsPjLW681XwAQADAgADeQADNgQ",
+        "AgACAgIAAxkBAAIF52lNgD4_wH1mUr3eoyPKnu6kCRHHAAKYDmsbu1BxSvyzqjBF2t2QAQADAgADeQADNgQ",
+        ],
     "model3d": [],
     "content": [],
-    "photo_stories": [],
+    "photo_stories": [
+        "AgACAgIAAxkBAAIFwWlNfDLUgboS3PdmmaNX9OPoa0SPAAJGDmsbu1BxStX7Y1GVydJ2AQADAgADeQADNgQ",
+        "AgACAgIAAxkBAAIFw2lNfFmxlat6_XdYqGNB7BRNEWc7AAJHDmsbu1BxSqm1t03puDeRAQADAgADeQADNgQ",
+        "AgACAgIAAxkBAAIFxWlNfHXVYw1i1Gl087PltQ5bsGRUAAJIDmsbu1BxStxxUZITl3-sAQADAgADeQADNgQ",
+        "AgACAgIAAxkBAAIFyWlNfK7zIL-_6U-5mDou1uz52OHPAAJKDmsbu1BxSk9OukxnBMeDAQADAgADeQADNgQ",
+        "AgACAgIAAxkBAAIFy2lNfMYNM4onqMvdMotKiNEneyr4AAJLDmsbu1BxSgABZJYagzYMgwEAAwIAA3kAAzYE",
+        "AgACAgIAAxkBAAIF1WlNfPj0LVDwd7EP_o3Mqpv6xxKXAAJODmsbu1BxSlyAAUe0VqjeAQADAgADeQADNgQ",
+                      ],
     "video_greeting": [],
 }
 
